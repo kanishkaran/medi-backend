@@ -1,0 +1,15 @@
+
+logs/
+*.log
+
+
+.env
+
+*.pyc
+*.pyo
+__pycache__/
+
+Med.db
+Medicines_backup.db
+
+v1.py
