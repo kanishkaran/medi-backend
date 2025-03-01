@@ -1,11 +1,11 @@
-from flask import Blueprint, jsonify, request, current_app
-from flask_jwt_extended import jwt_required, create_access_token, get_jwt_identity
+from flask import Blueprint, jsonify, request, session
 from backend.database import db
 from backend.models import User, Medicine, Cart, Order
 from backend.chatbot.order_management import view_order_history
 from backend.chatbot.conversation_flow import ConversationFlow
 from backend.chatbot.order_management import process_payment, fetch_cart, initiate_checkout, cancel_order
 from datetime import datetime
+
 # Blueprint for API routes
 api_routes = Blueprint("api_routes", __name__)
 
@@ -18,7 +18,7 @@ def register_user():
     password = data.get("password")
     date_of_birth_str = data.get("date_of_birth")
     phone_number = data.get("phone_number")
-
+    
     # Validations
     if not username or len(username) < 3:
         return jsonify({"message": "Username must be at least 3 characters long."}), 400
@@ -71,16 +71,18 @@ def login_user():
     if not user:
         return jsonify({"message": "Invalid email or password"}), 401
 
-    access_token = create_access_token(identity=user.id)
-    return jsonify({"access_token": access_token}), 200
+    session["user_id"] = user.id  # Store user ID in session
+
+    return jsonify({"message": "Login successful"}), 200
 
 # Fetch User Information
 @api_routes.route("/user", methods=["GET"])
-@jwt_required()
 def get_user_info():
-    user_id = get_jwt_identity()
-    user = User.query.get(user_id)
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"message": "User not logged in"}), 401
 
+    user = User.query.get(user_id)
     if not user:
         return jsonify({"message": "User not found"}), 404
 
@@ -93,9 +95,11 @@ def get_user_info():
 
 # Add to Cart
 @api_routes.route("/cart", methods=["POST"])
-@jwt_required()
 def add_to_cart():
-    user_id = get_jwt_identity()
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"message": "User not logged in"}), 401
+
     data = request.json
     medicine_id = data.get("medicine_id")
     quantity = data.get("quantity", 1)
@@ -114,11 +118,12 @@ def add_to_cart():
 
 # View Cart
 @api_routes.route("/cart", methods=["GET"])
-@jwt_required()
 def view_cart():
-    user_id = get_jwt_identity()
-    cart_items = fetch_cart(user_id)
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"message": "User not logged in"}), 401
 
+    cart_items = fetch_cart(user_id)
     if not cart_items:
         return jsonify({"message": "Your cart is empty"}), 200
 
@@ -132,11 +137,12 @@ def view_cart():
 
 # Checkout - Initiate Payment
 @api_routes.route("/checkout", methods=["POST"])
-@jwt_required()
 def checkout():
-    user_id = get_jwt_identity()
-    total_amount, message = initiate_checkout(user_id)
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"message": "User not logged in"}), 401
 
+    total_amount, message = initiate_checkout(user_id)
     if total_amount is None:
         return jsonify({"message": message}), 400
 
@@ -147,15 +153,16 @@ def checkout():
 
 # Payment
 @api_routes.route("/payment", methods=["POST"])
-@jwt_required()
 def payment():
-    user_id = get_jwt_identity()
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"message": "User not logged in"}), 401
+
     data = request.json
     payment_method = data.get("payment_method", "credit_card")
     total_amount = data.get("total_amount")
 
     success, order_id, message = process_payment(user_id, payment_method, total_amount)
-
     if not success:
         return jsonify({"message": message}), 400
 
@@ -166,9 +173,11 @@ def payment():
 
 # Order History
 @api_routes.route("/order/history", methods=["GET"])
-@jwt_required()
 def order_history():
-    user_id = get_jwt_identity()
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"message": "User not logged in"}), 401
+
     try:
         order_history = view_order_history(user_id)
         return jsonify(order_history), 200
@@ -177,52 +186,31 @@ def order_history():
 
 # Chat
 @api_routes.route("/chat", methods=["POST"])
-@jwt_required()
 def chat_with_bot():
-    """
-    Handles user messages for the chatbot by invoking the conversation flow.
-    """
-    user_id = get_jwt_identity()  # Get the authenticated user ID
-
-    # Ensure JSON is correctly parsed
-    data = request.get_json(silent=True)
-    print("Received request data:", data)  # Debugging log
-
-    if not data or "message" not in data:
-        return jsonify({"msg": "Invalid request: 'message' key missing"}), 422
-
-    message = data.get("message")
+    user_id = session.get("user_id") or 12  # Default for testing
+    message = request.json.get("message")
 
     if not isinstance(message, str) or not message.strip():
         return jsonify({"msg": "Message must be a non-empty string"}), 422
 
-    # Initialize the conversation flow instance
     conversation_flow = ConversationFlow()
-
-    # Process the message and get the chatbot's response
     return conversation_flow.handle_message(user_id, message)
 
 # Cancel Order
 @api_routes.route("/order/cancel", methods=["POST"])
-@jwt_required()
 def cancel_order_route():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"message": "User not logged in"}), 401
+
     data = request.json
     order_id = data.get("order_id")
-
     if not order_id:
         return jsonify({"message": "Order ID is required"}), 400
 
-    user_id = get_jwt_identity()
-    
-    # Fetch the order to verify that it belongs to the authenticated user
     order = Order.query.filter_by(id=order_id, user_id=user_id).first()
     if not order:
         return jsonify({"message": "Order not found for this user"}), 404
 
-    # Call the cancel_order function from the order management service
     success, message = cancel_order(order_id)
-    
-    if success:
-        return jsonify({"message": message}), 200
-    else:
-        return jsonify({"message": message}), 400
+    return jsonify({"message": message}), 200 if success else 400
