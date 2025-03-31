@@ -1,6 +1,6 @@
 from datetime import datetime
-from backend.database import db
-from backend.models import Cart, Order, OrderItem, Medicine, Payment
+from database import db
+from models import Cart, Order, OrderItem, Medicine, Payment
 
 def add_to_cart_service(user_id, medicine_id, quantity):
     """
@@ -42,21 +42,23 @@ def fetch_cart(user_id):
     :param user_id: The ID of the user
     :return: A list of cart items and their details
     """
+    # Fetch the active cart for the user
     cart = Cart.query.filter_by(user_id=user_id, status='active').first()
     if not cart:
         return []
 
-    cart_items = OrderItem.query.filter_by(cart_id=cart.id).all()
+    # Use the relationship between Cart and OrderItem to fetch cart items
     items = []
-    for item in cart_items:
-        medicine = Medicine.query.filter_by(id=item.medicine_id).first()
+    for item in cart.order_items:  # Assuming `order_items` is a relationship in the Cart model
         items.append({
-            "medicine_name": medicine.name,
+            "medicine_id": item.medicine.id,  # Access the related Medicine object
+            "medicine_name": item.medicine.name,
             "quantity": item.quantity,
             "price": item.price,
             "total_price": item.quantity * item.price,
+            "image_url": item.medicine.image_url,  # Assuming Medicine has an image_url field
         })
-    
+
     return items
 
 def initiate_checkout(user_id):

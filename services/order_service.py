@@ -1,5 +1,5 @@
-from backend.database import db
-from backend.models import Cart, OrderItem, Medicine
+from database import db
+from models import Cart, OrderItem, Medicine
 
 def checkout_order(user_id):
     """

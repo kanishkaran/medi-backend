@@ -1,9 +1,10 @@
-from flask import Blueprint, jsonify, request, session
-from backend.database import db
-from backend.models import User, Medicine, Cart, Order
-from backend.chatbot.order_management import view_order_history
-from backend.chatbot.conversation_flow import ConversationFlow
-from backend.chatbot.order_management import process_payment, fetch_cart, initiate_checkout, cancel_order
+from flask import Blueprint, jsonify, request
+from database import db
+from models import User, Medicine, Cart, Order, OrderItem
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+from chatbot.order_management import view_order_history
+from chatbot.conversation_flow import ConversationFlow
+from chatbot.order_management import process_payment, fetch_cart, initiate_checkout, cancel_order
 from datetime import datetime
 
 # Blueprint for API routes
@@ -18,7 +19,7 @@ def register_user():
     password = data.get("password")
     date_of_birth_str = data.get("date_of_birth")
     phone_number = data.get("phone_number")
-    
+
     # Validations
     if not username or len(username) < 3:
         return jsonify({"message": "Username must be at least 3 characters long."}), 400
@@ -60,6 +61,7 @@ def register_user():
 
     return jsonify({"message": "User registered successfully."}), 201
 
+
 # User Login
 @api_routes.route("/login", methods=["POST"])
 def login_user():
@@ -71,17 +73,17 @@ def login_user():
     if not user:
         return jsonify({"message": "Invalid email or password"}), 401
 
-    session["user_id"] = user.id  # Store user ID in session
+    # Generate JWT token
+    access_token = create_access_token(identity=user.id)
 
-    return jsonify({"message": "Login successful"}), 200
+    return jsonify({"message": "Login successful", "access_token": access_token}), 200
+
 
 # Fetch User Information
 @api_routes.route("/user", methods=["GET"])
+@jwt_required()
 def get_user_info():
-    user_id = session.get("user_id")
-    if not user_id:
-        return jsonify({"message": "User not logged in"}), 401
-
+    user_id = get_jwt_identity()
     user = User.query.get(user_id)
     if not user:
         return jsonify({"message": "User not found"}), 404
@@ -93,55 +95,65 @@ def get_user_info():
         "date_of_birth": user.date_of_birth,
     })
 
-# Add to Cart
-@api_routes.route("/cart", methods=["POST"])
-def add_to_cart():
-    user_id = session.get("user_id")
-    if not user_id:
-        return jsonify({"message": "User not logged in"}), 401
 
+@api_routes.route("/cart", methods=["POST"])
+@jwt_required()
+def add_to_cart():
+    user_id = get_jwt_identity()
     data = request.json
     medicine_id = data.get("medicine_id")
     quantity = data.get("quantity", 1)
 
-    # Check stock availability
+    # Check if the medicine exists and has sufficient stock
     medicine = Medicine.query.get(medicine_id)
     if not medicine or medicine.stock < quantity:
         return jsonify({"message": "Insufficient stock"}), 400
 
-    # Add to cart
-    cart_item = Cart(user_id=user_id, medicine_id=medicine_id, quantity=quantity)
-    db.session.add(cart_item)
+    # Get or create an active cart for the user
+    cart = Cart.query.filter_by(user_id=user_id, status='active').first()
+    if not cart:
+        cart = Cart(user_id=user_id)
+        db.session.add(cart)
+        db.session.commit()
+
+    # Check if the item already exists in the cart
+    order_item = OrderItem.query.filter_by(cart_id=cart.id, medicine_id=medicine_id).first()
+    if order_item:
+        # Update the quantity if the item already exists
+        order_item.quantity += quantity
+    else:
+        # Create a new order item
+        order_item = OrderItem(
+            cart_id=cart.id,
+            medicine_id=medicine_id,
+            quantity=quantity,
+            price=medicine.price
+        )
+        db.session.add(order_item)
+
+    # Commit the changes
     db.session.commit()
 
     return jsonify({"message": "Item added to cart"}), 200
 
+
 # View Cart
 @api_routes.route("/cart", methods=["GET"])
+@jwt_required()
 def view_cart():
-    user_id = session.get("user_id")
-    if not user_id:
-        return jsonify({"message": "User not logged in"}), 401
-
+    user_id = get_jwt_identity()
     cart_items = fetch_cart(user_id)
     if not cart_items:
         return jsonify({"message": "Your cart is empty"}), 200
 
-    return jsonify([{
-        "medicine_id": item.medicine.id,
-        "medicine_name": item.medicine.name,
-        "quantity": item.quantity,
-        "price": item.medicine.price,
-        "image_url": item.medicine.image_url,
-    } for item in cart_items])
+    return jsonify(cart_items), 200
+
 
 # Checkout - Initiate Payment
 @api_routes.route("/checkout", methods=["POST"])
+@jwt_required()
 def checkout():
-    user_id = session.get("user_id")
-    if not user_id:
-        return jsonify({"message": "User not logged in"}), 401
-
+    user_id = get_jwt_identity()
     total_amount, message = initiate_checkout(user_id)
     if total_amount is None:
         return jsonify({"message": message}), 400
@@ -151,13 +163,12 @@ def checkout():
         "total_amount": total_amount
     }), 200
 
+
 # Payment
 @api_routes.route("/payment", methods=["POST"])
+@jwt_required()
 def payment():
-    user_id = session.get("user_id")
-    if not user_id:
-        return jsonify({"message": "User not logged in"}), 401
-
+    user_id = get_jwt_identity()
     data = request.json
     payment_method = data.get("payment_method", "credit_card")
     total_amount = data.get("total_amount")
@@ -171,23 +182,24 @@ def payment():
         "order_id": order_id
     }), 200
 
+
 # Order History
 @api_routes.route("/order/history", methods=["GET"])
+@jwt_required()
 def order_history():
-    user_id = session.get("user_id")
-    if not user_id:
-        return jsonify({"message": "User not logged in"}), 401
-
+    user_id = get_jwt_identity()
     try:
         order_history = view_order_history(user_id)
         return jsonify(order_history), 200
     except Exception as e:
         return jsonify({"message": "Failed to fetch order history", "error": str(e)}), 500
 
+
 # Chat
 @api_routes.route("/chat", methods=["POST"])
+@jwt_required()
 def chat_with_bot():
-    user_id = session.get("user_id") or 12  # Default for testing
+    user_id = get_jwt_identity()
     message = request.json.get("message")
 
     if not isinstance(message, str) or not message.strip():
@@ -196,13 +208,12 @@ def chat_with_bot():
     conversation_flow = ConversationFlow()
     return conversation_flow.handle_message(user_id, message)
 
+
 # Cancel Order
 @api_routes.route("/order/cancel", methods=["POST"])
+@jwt_required()
 def cancel_order_route():
-    user_id = session.get("user_id")
-    if not user_id:
-        return jsonify({"message": "User not logged in"}), 401
-
+    user_id = get_jwt_identity()
     data = request.json
     order_id = data.get("order_id")
     if not order_id:

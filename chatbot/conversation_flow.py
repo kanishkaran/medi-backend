@@ -1,8 +1,8 @@
 from flask import jsonify
-from backend.chatbot.nlu import process_user_input
-from backend.services.medicine_service import get_medicine_details, get_medicine_info, get_medicine_availability
-from backend.services.order_service import fetch_cart, checkout_order
-from backend.llm_connector import generate_response
+from chatbot.nlu import process_user_input
+from services.medicine_service import get_medicine_details, get_medicine_info, get_medicine_availability
+from services.order_service import fetch_cart, checkout_order
+from llm_connector import generate_response
 
 class ConversationFlow:
     """
@@ -19,12 +19,8 @@ class ConversationFlow:
         :param message: User's message
         :return: JSON response with the chatbot's reply
         """
-        # Process user input and extract intent + entities
         try:
-            print("Executing Try Block...")
             intent, entities = process_user_input(message)
-            print('got back response')
-            print(intent, entities)
 
             handlers = {
                 "greet": self._greet_user,
@@ -41,7 +37,6 @@ class ConversationFlow:
             return jsonify({"response": f"An error occurred: {str(e)}"}), 500
 
     def _fallback_response(self, user_id, entities=None):
-        
         fallback_response = generate_response("I didn't understand that. Could you rephrase?")
         return jsonify({"response": fallback_response})
 
@@ -51,7 +46,7 @@ class ConversationFlow:
         """
         prompt = "Generate a friendly greeting for a returning user."
         response = generate_response(prompt)
-        return jsonify({"response": response})
+        return jsonify({"response": response, "intent": "greet"})
 
     def _handle_medicine_search(self, user_id, entities):
         """
@@ -68,20 +63,20 @@ class ConversationFlow:
 
         medicine = get_medicine_details(medicine_name)
 
-
         if not medicine:
-            prompt = f"Generate a response apologizing for not finding the medicine '{medicine}'. be short"
+            prompt = f"Generate a response apologizing for not finding the medicine '{medicine_name}'. Be short."
             response = generate_response(prompt)
             return jsonify({"response": response})
 
         # LLM-driven response for medicine details
         prompt = (
-            f"Generate a response showing details for the medicine '{medicine['name']}' with its price, be short"
+            f"Generate a response showing details for the medicine '{medicine['name']}' with its price. Be short."
         )
         response = generate_response(prompt)
 
         return jsonify({
             "response": response,
+            "intent": "search_medicine",
             "medicine_details": {
                 "id": medicine["id"],
                 "name": medicine["name"],
@@ -115,12 +110,13 @@ class ConversationFlow:
         # LLM-driven response for detailed information
         prompt = (
             f"Generate a detailed response providing information about the medicine '{medicine_name}', including its uses, "
-            f"side effects. The details are as follows: {medicine_info}."
+            f"side effects. The details are as follows: {medicine_info}. Make it short and informative."
         )
         response = generate_response(prompt)
 
         return jsonify({
             "response": response,
+            "intent": "medicine_info",
             "medicine_info": medicine_info
         })
 
@@ -146,13 +142,14 @@ class ConversationFlow:
 
         # LLM-driven response for medicine details
         prompt = (
-            f"Your are a medicine vendor Giving response back to the customer on medicine availability Query, Generate a short response showing details for the medicine '{medicine['name']}' with its stock, and "
-            f"The stock remaining is {medicine['stock']} Don't include other details other than these."
+            f"Generate a short response showing details for the medicine '{medicine['name']}' with its stock. "
+            f"The stock remaining is {medicine['stock']}."
         )
         response = generate_response(prompt)
 
         return jsonify({
             "response": response,
+            "intent": "medicine_availability",
             "medicine_details": {
                 "id": medicine["id"],
                 "name": medicine["name"],
@@ -164,8 +161,6 @@ class ConversationFlow:
         """
         Retrieves and displays the user's cart via LLM response.
         """
-        # from backend.services.order_service import fetch_cart
-
         cart = fetch_cart(user_id)
         if not cart:
             prompt = "Generate a response informing the user that their cart is empty."
@@ -181,27 +176,18 @@ class ConversationFlow:
         prompt = f"Generate a response summarizing the cart items: {cart_summary}"
         response = generate_response(prompt)
 
-        return jsonify({"response": response})
+        return jsonify({"response": response, "intent": "view_cart"})
 
     def _checkout_cart(self, user_id, entities=None):
         """
         Handles the checkout process and dynamically responds using the LLM.
         """
-        # from backend.services.order_service import checkout_order
-
         success, order_id, message = checkout_order(user_id)
         if success:
             prompt = f"Generate a congratulatory response for successfully placing order #{order_id}."
             response = generate_response(prompt)
-            return jsonify({"response": response})
+            return jsonify({"response": response, "intent": "checkout"})
         else:
             prompt = f"Generate an error response for failed checkout: {message}"
             response = generate_response(prompt)
             return jsonify({"response": response})
-
-
-# convo = ConversationFlow()
-
-# message = input("User:")
-# while message != "quit":
-    # convo.handle_message(1, message)

@@ -1,5 +1,5 @@
-from backend.database import db
-from backend.models import Medicine
+from database import db
+from models import Medicine
 
 def get_medicine_details(medicine_name):
     """
