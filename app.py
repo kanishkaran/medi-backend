@@ -34,8 +34,8 @@ def create_app():
 
     # Google OAuth Blueprint
     google_bp = make_google_blueprint(
-        client_id="1075856046253-71vvtot48lv4p82cloon1145ovf123ga.apps.googleusercontent.com",
-        client_secret="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",
+        client_id="",
+        client_secret="",
         redirect_to="google_login_callback"
     )
     app.register_blueprint(google_bp, url_prefix="/login")
