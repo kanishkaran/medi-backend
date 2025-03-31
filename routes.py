@@ -1,15 +1,62 @@
 from flask import Blueprint, jsonify, request
+from google.oauth2 import id_token
+from google.auth.transport import requests
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from database import db
 from models import User, Medicine, Cart, Order, OrderItem
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from chatbot.order_management import view_order_history
+from chatbot.order_management import view_order_history, process_payment, fetch_cart, initiate_checkout, cancel_order
 from chatbot.conversation_flow import ConversationFlow
-from chatbot.order_management import process_payment, fetch_cart, initiate_checkout, cancel_order
 from datetime import datetime
 
 # Blueprint for API routes
 api_routes = Blueprint("api_routes", __name__)
 
+ #Google Login Route
+@api_routes.route("/login/google", methods=["POST"])
+def google_login():
+    data = request.json
+    token = data.get("token")
+
+    if not token:
+        return jsonify({"message": "Token is required"}), 400
+
+    try:
+        # Verify the token with Google's servers
+        idinfo = id_token.verify_oauth2_token(token, requests.Request(), "1075856046253-71vvtot48lv4p82cloon1145ovf123ga.apps.googleusercontent.com")
+
+        # Extract user information
+        email = idinfo["email"]
+        username = idinfo.get("name", email.split("@")[0])
+
+        # Check if the user already exists
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            # Create a new user if not already registered
+            user = User(
+                username=username,
+                email=email,
+                password=None,  # No password for Google login
+                date_of_birth=None,  # Optional
+                phone_number=None  # Optional
+            )
+            db.session.add(user)
+            db.session.commit()
+
+        # Generate JWT token
+        access_token = create_access_token(identity=user.id)
+
+        return jsonify({
+            "message": "Login successful",
+            "access_token": access_token,
+            "user": {
+                "username": user.username,
+                "email": user.email
+            }
+        }), 200
+
+    except ValueError as e:
+        return jsonify({"message": "Invalid token", "error": str(e)}), 400
+    
 # User Registration
 @api_routes.route("/register", methods=["POST"])
 def register_user():
