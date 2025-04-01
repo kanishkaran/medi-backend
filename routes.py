@@ -2,16 +2,20 @@ from flask import Blueprint, jsonify, request
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from database import db
-from models import User, Medicine, Cart, Order, OrderItem
-from chatbot.order_management import view_order_history, process_payment, fetch_cart, initiate_checkout, cancel_order
-from chatbot.conversation_flow import ConversationFlow
+from .database import db
+from .models import User, Medicine, Cart, Order, OrderItem
+from .chatbot.order_management import view_order_history, complete_order, fetch_cart, initiate_checkout, cancel_order
+from .chatbot.conversation_flow import ConversationFlow
 from datetime import datetime
+import stripe
+
+# Initialize Stripe client
+stripe.api_key = "sk_test_51R8nH7CY9tdh1bLP5EWofkR41f7gG6bFdCVFyMo9Oexy2zxhhWcL4ps7MdqsrvURnVuYQ1td7zK4NspvCzr9eFMI00HTObWS8W"
 
 # Blueprint for API routes
 api_routes = Blueprint("api_routes", __name__)
 
- #Google Login Route
+# Google Login Route
 @api_routes.route("/login/google", methods=["POST"])
 def google_login():
     data = request.json
@@ -36,8 +40,8 @@ def google_login():
                 username=username,
                 email=email,
                 password=None,  # No password for Google login
-                date_of_birth=None,  # Optional
-                phone_number=None  # Optional
+                date_of_birth=None,
+                phone_number=None
             )
             db.session.add(user)
             db.session.commit()
@@ -56,7 +60,7 @@ def google_login():
 
     except ValueError as e:
         return jsonify({"message": "Invalid token", "error": str(e)}), 400
-    
+
 # User Registration
 @api_routes.route("/register", methods=["POST"])
 def register_user():
@@ -108,7 +112,6 @@ def register_user():
 
     return jsonify({"message": "User registered successfully."}), 201
 
-
 # User Login
 @api_routes.route("/login", methods=["POST"])
 def login_user():
@@ -124,7 +127,6 @@ def login_user():
     access_token = create_access_token(identity=user.id)
 
     return jsonify({"message": "Login successful", "access_token": access_token}), 200
-
 
 # Fetch User Information
 @api_routes.route("/user", methods=["GET"])
@@ -142,7 +144,7 @@ def get_user_info():
         "date_of_birth": user.date_of_birth,
     })
 
-
+# Cart Operations
 @api_routes.route("/cart", methods=["POST"])
 @jwt_required()
 def add_to_cart():
@@ -183,8 +185,6 @@ def add_to_cart():
 
     return jsonify({"message": "Item added to cart"}), 200
 
-
-# View Cart
 @api_routes.route("/cart", methods=["GET"])
 @jwt_required()
 def view_cart():
@@ -195,8 +195,7 @@ def view_cart():
 
     return jsonify(cart_items), 200
 
-
-# Checkout - Initiate Payment
+# Checkout
 @api_routes.route("/checkout", methods=["POST"])
 @jwt_required()
 def checkout():
@@ -211,23 +210,77 @@ def checkout():
     }), 200
 
 
-# Payment
-@api_routes.route("/payment", methods=["POST"])
+# Payment: Create Stripe Payment Intent
+@api_routes.route("/payment/intent", methods=["POST"])
 @jwt_required()
-def payment():
+def create_payment_intent():
     user_id = get_jwt_identity()
     data = request.json
-    payment_method = data.get("payment_method", "credit_card")
-    total_amount = data.get("total_amount")
+    amount = data.get("amount")  # Amount in INR (e.g., 500 for ₹500)
 
-    success, order_id, message = process_payment(user_id, payment_method, total_amount)
-    if not success:
-        return jsonify({"message": message}), 400
+    if not amount or amount <= 0:
+        return jsonify({"message": "Invalid amount"}), 400
 
-    return jsonify({
-        "message": "Payment successful, order placed",
-        "order_id": order_id
-    }), 200
+    try:
+        # Create Stripe Payment Intent
+        intent = stripe.PaymentIntent.create(
+            amount=int(amount * 100),  # Amount in paise
+            currency="inr",
+            payment_method_types=["card"],
+        )
+
+        return jsonify({
+            "client_secret": intent["client_secret"],
+            "payment_intent_id": intent["id"],  # Include payment_intent_id
+            "amount": amount,
+            "currency": "INR"
+        }), 200
+    except Exception as e:
+        return jsonify({"message": "Failed to create payment intent", "error": str(e)}), 500
+
+@api_routes.route("/payment/verify", methods=["POST"])
+@jwt_required()
+def verify_payment():
+    user_id = get_jwt_identity()
+    data = request.json
+    payment_intent_id = data.get("payment_intent_id")
+
+    if not payment_intent_id:
+        return jsonify({"message": "Payment Intent ID is required"}), 400
+
+    try:
+        # Log the payment_intent_id for debugging
+        print(f"Received payment_intent_id: {payment_intent_id}")
+
+        # Step 1: Retrieve the Payment Intent from Stripe
+        intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+        print(f"Retrieved Payment Intent: {intent}")
+
+        # Step 2: Validate the Payment Status
+        if intent["status"] == "succeeded":
+            # Payment is successful, complete the order
+            total_amount = intent["amount"] / 100  # Convert from paise to INR
+            print(f"Payment succeeded. Total amount: {total_amount}")
+
+            # Call the complete_order function
+            success, order_id, message = complete_order(user_id, total_amount)
+            print(f"Order completion status: {success}, Order ID: {order_id}, Message: {message}")
+
+            if success:
+                return jsonify({
+                    "message": f"Payment verified and order #{order_id} completed successfully.",
+                    "order_id": order_id
+                }), 200
+            else:
+                return jsonify({"message": message}), 400
+        else:
+            print(f"Payment not successful. Status: {intent['status']}")
+            return jsonify({"message": f"Payment not successful. Status: {intent['status']}"}), 400
+
+    except Exception as e:
+        # Log the error for debugging
+        print(f"Error in /payment/verify: {str(e)}")
+        return jsonify({"message": "Failed to verify payment", "error": str(e)}), 500
 
 
 # Order History
@@ -240,21 +293,6 @@ def order_history():
         return jsonify(order_history), 200
     except Exception as e:
         return jsonify({"message": "Failed to fetch order history", "error": str(e)}), 500
-
-
-# Chat
-@api_routes.route("/chat", methods=["POST"])
-@jwt_required()
-def chat_with_bot():
-    user_id = get_jwt_identity()
-    message = request.json.get("message")
-
-    if not isinstance(message, str) or not message.strip():
-        return jsonify({"msg": "Message must be a non-empty string"}), 422
-
-    conversation_flow = ConversationFlow()
-    return conversation_flow.handle_message(user_id, message)
-
 
 # Cancel Order
 @api_routes.route("/order/cancel", methods=["POST"])
@@ -272,3 +310,16 @@ def cancel_order_route():
 
     success, message = cancel_order(order_id)
     return jsonify({"message": message}), 200 if success else 400
+
+# Chat
+@api_routes.route("/chat", methods=["POST"])
+@jwt_required()
+def chat_with_bot():
+    user_id = get_jwt_identity()
+    message = request.json.get("message")
+
+    if not isinstance(message, str) or not message.strip():
+        return jsonify({"msg": "Message must be a non-empty string"}), 422
+
+    conversation_flow = ConversationFlow()
+    return conversation_flow.handle_message(user_id, message)

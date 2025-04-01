@@ -1,6 +1,6 @@
 from datetime import datetime
-from database import db
-from models import Cart, Order, OrderItem, Medicine, Payment
+from ..database import db
+from ..models import Cart, Order, OrderItem, Medicine, Payment
 
 def add_to_cart_service(user_id, medicine_id, quantity):
     """
@@ -111,24 +111,22 @@ def process_payment(user_id, payment_method, total_amount):
     return complete_order(user_id, total_amount)
 
 def complete_order(user_id, total_amount):
-    """
-    Completes the order after successful payment and moves items to the order.
-    :param user_id: The ID of the user
-    :param total_amount: The total amount paid
-    :return: A success flag, order ID, and a message
-    """
+    print(f"Starting order completion for user_id: {user_id}, total_amount: {total_amount}")
     cart = Cart.query.filter_by(user_id=user_id, status='active').first()
     if not cart:
+        print("No active cart found.")
         return False, None, "No active cart found."
 
     cart_items = OrderItem.query.filter_by(cart_id=cart.id).all()
     if not cart_items:
+        print("Cart is empty.")
         return False, None, "Cart is empty."
 
     # Create a new order
-    order = Order(user_id=user_id, created_at=datetime(), status='completed', total_amount=total_amount)
+    order = Order(user_id=user_id, created_at=datetime.now(), status='completed', total_amount=total_amount)
     db.session.add(order)
     db.session.commit()
+    print(f"Order created with ID: {order.id}")
 
     # Move items from cart to order
     for item in cart_items:
@@ -136,10 +134,11 @@ def complete_order(user_id, total_amount):
         db.session.add(order_item)
         db.session.delete(item)
 
-    cart.status = 'completed'  # Mark the cart as completed
+    cart.status = 'inactive'  # Mark the cart as inactive
     db.session.commit()
+    print(f"Order #{order.id} completed successfully.")
 
-    return True, order.id, f"Order #{order.id} placed successfully with total amount: ${total_amount}"
+    return True, order.id, f"Order #{order.id} placed successfully with total amount: ₹{total_amount}"
 
 def cancel_order(order_id):
     """
@@ -151,11 +150,11 @@ def cancel_order(order_id):
     if not order:
         return False, "Order not found."
 
-    if order.status == 'canceled':
+    if order.status == 'cancelled':
         return False, "Order has already been canceled."
 
     # Update the order status to canceled
-    order.status = 'canceled'
+    order.status = 'cancelled'
     db.session.commit()
 
     # Restore stock of medicines in the canceled order
@@ -168,31 +167,23 @@ def cancel_order(order_id):
     return True, "Order has been canceled and stock restored."
 
 def view_order_history(user_id):
-    """
-    Retrieves the order history for a user.
-    :param user_id: The ID of the user
-    :return: A list of orders and their details
-    """
     orders = Order.query.filter_by(user_id=user_id).all()
     order_history = []
     for order in orders:
         items = []
-        total_amount = 0
-        order_items = OrderItem.query.filter_by(order_id=order.id).all()
-        for item in order_items:
-            medicine = Medicine.query.filter_by(id=item.medicine_id).first()
+        for item in order.order_items:
             items.append({
-                "medicine_name": medicine.name,
+                "id": item.id,
+                "name": item.medicine.name,
                 "quantity": item.quantity,
                 "price": item.price,
                 "total_price": item.quantity * item.price,
             })
-            total_amount += item.quantity * item.price
 
         order_history.append({
-            "order_id": order.id,
-            "created_at": order.created_at,
-            "total_amount": total_amount,
+            "id": order.id,
+            "createdAt": order.created_at.isoformat(),
+            "total": order.total_amount,
             "status": order.status,
             "items": items
         })
