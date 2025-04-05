@@ -8,12 +8,69 @@ from .chatbot.order_management import view_order_history, complete_order, fetch_
 from .chatbot.conversation_flow import ConversationFlow
 from datetime import datetime
 import stripe
+import os
+import numpy as np
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing.image import img_to_array
+from PIL import Image
+import pickle
 
 # Initialize Stripe client
 stripe.api_key = "sk_test_51R8nH7CY9tdh1bLP5EWofkR41f7gG6bFdCVFyMo9Oexy2zxhhWcL4ps7MdqsrvURnVuYQ1td7zK4NspvCzr9eFMI00HTObWS8W"
 
 # Blueprint for API routes
 api_routes = Blueprint("api_routes", __name__)
+
+
+# Load the handwriting recognition model
+MODEL_PATH = "models/my_model-85ac.h5"  # Replace with the actual path to your model
+model = load_model(MODEL_PATH)
+
+# Load the label encoder
+LABEL_ENCODER_PATH = "models/label_encoder.pkl"  # Replace with the actual path to your label encoder
+with open(LABEL_ENCODER_PATH, "rb") as file:
+    label_encoder = pickle.load(file)
+
+# Define the image preprocessing function
+def preprocess_image(image):
+    """
+    Preprocess the input image to match the model's requirements.
+    """
+    image = image.convert("L")  # Convert to grayscale
+    image = image.resize((128, 32))  # Resize to match model input
+    image = img_to_array(image) / 255.0  # Normalize pixel values
+    image = np.expand_dims(image, axis=0)  # Add batch dimension
+    return image
+
+# Handwriting Recognition Endpoint
+@api_routes.route("/recognize", methods=["POST"])
+def recognize_handwriting():
+    """
+    Endpoint to recognize handwriting from an uploaded image.
+    """
+    if "image" not in request.files:
+        return jsonify({"message": "No image file provided"}), 400
+
+    file = request.files["image"]
+    if file.filename == "":
+        return jsonify({"message": "No selected file"}), 400
+
+    try:
+        # Load and preprocess the image
+        image = Image.open(file.stream)
+        processed_image = preprocess_image(image)
+
+        # Predict the label using the model
+        prediction = model.predict(processed_image)
+        predicted_label_index = np.argmax(prediction, axis=-1)[0]
+
+        # Decode the predicted label using the label encoder
+        predicted_label = label_encoder.inverse_transform([predicted_label_index])[0]
+
+        return jsonify({"predicted_label": predicted_label}), 200
+    except Exception as e:
+        return jsonify({"message": "Failed to process the image", "error": str(e)}), 500
+
 
 # Google Login Route
 @api_routes.route("/login/google", methods=["POST"])
