@@ -1,7 +1,8 @@
 from flask import jsonify
 from ..chatbot.nlu import process_user_input
 from ..services.medicine_service import get_medicine_details, get_medicine_info, get_medicine_availability
-from ..services.order_service import fetch_cart, checkout_order
+from ..services.order_service import checkout_order
+from ..chatbot.order_management import fetch_cart
 from ..llm_connector import generate_response
 
 class ConversationFlow:
@@ -34,7 +35,7 @@ class ConversationFlow:
             handler = handlers.get(intent, self._fallback_response)
             return handler(user_id, entities)
         except Exception as e:
-            return jsonify({"response": f"An error occurred: {str(e)}"}), 500
+            return jsonify({"response": f"An error occurred while handling intent: {str(e)}"}), 500
 
     def _fallback_response(self, user_id, entities=None):
         fallback_response = generate_response("I didn't understand that. Could you rephrase?")

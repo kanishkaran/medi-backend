@@ -6,8 +6,9 @@ from .database import db
 from .models import User, Medicine, Cart, Order, OrderItem
 from .chatbot.order_management import view_order_history, complete_order, fetch_cart, initiate_checkout, cancel_order
 from .chatbot.conversation_flow import ConversationFlow
-from datetime import datetime
+from datetime import datetime, date
 import stripe
+import requests as http_requests
 import os
 import numpy as np
 from tensorflow.keras.models import load_model
@@ -76,18 +77,52 @@ def recognize_handwriting():
 @api_routes.route("/login/google", methods=["POST"])
 def google_login():
     data = request.json
-    token = data.get("token")
+    token = data.get("token")  # This is the OAuth 2.0 access token
 
     if not token:
         return jsonify({"message": "Token is required"}), 400
 
     try:
-        # Verify the token with Google's servers
-        idinfo = id_token.verify_oauth2_token(token, requests.Request(), "1075856046253-71vvtot48lv4p82cloon1145ovf123ga.apps.googleusercontent.com")
+        # Use the access token to fetch user info from Google's UserInfo endpoint
+        userinfo_url = "https://www.googleapis.com/oauth2/v3/userinfo"
+        headers = {"Authorization": f"Bearer {token}"}
+
+        userinfo_response = http_requests.get(userinfo_url, headers=headers)
+        if userinfo_response.status_code != 200:
+            return jsonify({"message": "Failed to fetch user info", "error": userinfo_response.json()}), 401
+
+        userinfo = userinfo_response.json()
 
         # Extract user information
-        email = idinfo["email"]
-        username = idinfo.get("name", email.split("@")[0])
+        email = userinfo.get("email")
+        username = userinfo.get("name", email.split("@")[0])
+        picture = userinfo.get("picture")
+        date_of_birth = None
+        phone_number = None
+
+        # Use the access token to fetch additional information from Google People API
+        people_api_url = "https://people.googleapis.com/v1/people/me?personFields=birthdays,phoneNumbers"
+        people_response = http_requests.get(people_api_url, headers=headers)
+        if people_response.status_code == 200:
+            people_data = people_response.json()
+
+            # Extract date of birth
+            if "birthdays" in people_data:
+                dob_data = people_data["birthdays"][0].get("date", {})
+                if dob_data:
+                    # Convert the date to a Python date object
+                    year = dob_data.get("year", 0)
+                    month = dob_data.get("month", 0)
+                    day = dob_data.get("day", 0)
+                    if year and month and day:
+                        date_of_birth = date(year, month, day)
+
+            # Extract phone number
+            if "phoneNumbers" in people_data:
+                phone_number = people_data["phoneNumbers"][0].get("value")
+                
+        if not phone_number:
+            phone_number = "N/A"  # Use a default value or placeholder
 
         # Check if the user already exists
         user = User.query.filter_by(email=email).first()
@@ -96,9 +131,10 @@ def google_login():
             user = User(
                 username=username,
                 email=email,
-                password=None,  # No password for Google login
-                date_of_birth=None,
-                phone_number=None
+                password="",  # No password for Google login
+                date_of_birth=date_of_birth,
+                phone_number=phone_number,
+                created_at=datetime.utcnow()
             )
             db.session.add(user)
             db.session.commit()
@@ -111,13 +147,16 @@ def google_login():
             "access_token": access_token,
             "user": {
                 "username": user.username,
-                "email": user.email
+                "email": user.email,
+                "date_of_birth": user.date_of_birth,
+                "phone_number": user.phone_number,
+                "picture": picture
             }
         }), 200
 
-    except ValueError as e:
-        return jsonify({"message": "Invalid token", "error": str(e)}), 400
-
+    except Exception as e:
+        return jsonify({"message": "Failed to log in with Google", "error": str(e)}), 500
+        
 # User Registration
 @api_routes.route("/register", methods=["POST"])
 def register_user():
@@ -252,6 +291,27 @@ def view_cart():
 
     return jsonify(cart_items), 200
 
+@api_routes.route("/cart/<int:item_id>", methods=["DELETE"])
+@jwt_required()
+def delete_cart_item(item_id):
+    user_id = get_jwt_identity()
+    try:
+        # Find the cart item by ID and ensure it belongs to the user
+        cart_item = OrderItem.query.join(Cart).filter(
+            OrderItem.medicine_id == item_id, Cart.user_id == user_id, Cart.status == 'active'
+        ).first()
+
+        if not cart_item:
+            return jsonify({"message": "Item not found or does not belong to the user"}), 404
+
+        # Delete the item from the database
+        db.session.delete(cart_item)
+        db.session.commit()
+
+        return jsonify({"message": "Item deleted successfully"}), 200
+    except Exception as e:
+        return jsonify({"message": "Failed to delete item", "error": str(e)}), 500
+
 # Checkout
 @api_routes.route("/checkout", methods=["POST"])
 @jwt_required()
@@ -279,11 +339,11 @@ def create_payment_intent():
         return jsonify({"message": "Invalid amount"}), 400
 
     try:
-        # Create Stripe Payment Intent
+        # Create Stripe Payment Intent with multiple payment methods
         intent = stripe.PaymentIntent.create(
             amount=int(amount * 100),  # Amount in paise
             currency="inr",
-            payment_method_types=["card"],
+            payment_method_types=["card"],  # Add other methods
         )
 
         return jsonify({

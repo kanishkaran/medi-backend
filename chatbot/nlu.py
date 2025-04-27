@@ -18,7 +18,8 @@ Here are the types of intents you can handle:
 5. view_cart: User wants to view the items in their cart.
 6. checkout: User wants to checkout and complete the order.
 
-Your task is to classify the user input into one of these intents, and if applicable, extract relevant entities (like medicine name, quantity, etc.).
+Your task is to classify the user input into one of these six intents, and if applicable, extract relevant entities (like medicine name, quantity, etc.).
+Make sure to provide correct and precise information of intent.
 Here is the user input: "{user_input}"
 
 Provide the intent and entities in the following format:
@@ -63,7 +64,7 @@ def process_user_input(user_input):
     if "quantity" in entities:
         entities["quantity"] = int(entities["quantity"]) if entities["quantity"].isdigit() else 1
     
-    print('returned intents and entities...')
+    print('returned intents and entities...', intent, entities)
     return intent, entities
 
 
