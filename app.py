@@ -19,7 +19,7 @@ def create_app():
     configure_logger(app)
 
     # Enable CORS with the specific domain
-    CORS(app, resources={r"/*": {"origins": "https://mediverse.netlify.app"}})
+    CORS(app, resources={r"/*": {"origins": "https://mediversee.netlify.app"}})
 
     # Initialize JWT
     jwt = JWTManager(app)
