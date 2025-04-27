@@ -45,7 +45,7 @@ class ConversationFlow:
         """
         Greets the user dynamically using the LLM.
         """
-        prompt = "Generate a friendly greeting for a returning user."
+        prompt = "Generate a friendly greeting for a user."
         response = generate_response(prompt)
         return jsonify({"response": response, "intent": "greet"})
 
@@ -71,7 +71,8 @@ class ConversationFlow:
 
         # LLM-driven response for medicine details
         prompt = (
-            f"Generate a response showing details for the medicine '{medicine['name']}' with its price. Be short."
+            f"""You are giving back response for user's Query for ordering a medicine. Generate a response showing details for the medicine '{medicine['name']}' with its price {medicine['price']}. Be short.
+            use indian currency"""
         )
         response = generate_response(prompt)
 
@@ -104,14 +105,14 @@ class ConversationFlow:
         medicine_info = get_medicine_info(medicine_name)
 
         if not medicine_info:
-            prompt = f"Generate a response apologizing for not finding detailed information about the medicine '{medicine_name}'."
+            prompt = f"Generate a response apologizing for not finding information about the medicine '{medicine_name}'."
             response = generate_response(prompt)
             return jsonify({"response": response})
 
         # LLM-driven response for detailed information
         prompt = (
             f"Generate a detailed response providing information about the medicine '{medicine_name}', including its uses, "
-            f"side effects. The details are as follows: {medicine_info}. Make it short and informative."
+            f"side effects. The details are as follows: {medicine_info}. Make it short and informative. use indian currency."
         )
         response = generate_response(prompt)
 
@@ -144,7 +145,7 @@ class ConversationFlow:
         # LLM-driven response for medicine details
         prompt = (
             f"Generate a short response showing details for the medicine '{medicine['name']}' with its stock. "
-            f"The stock remaining is {medicine['stock']}."
+            f"The stock remaining is {medicine['stock']}. Highlight the stock level."
         )
         response = generate_response(prompt)
 
