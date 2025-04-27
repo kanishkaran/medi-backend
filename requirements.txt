@@ -9,7 +9,7 @@ langchain==0.3.24
 langchain_core==0.3.56
 langchain_groq==0.3.2
 marshmallow==4.0.0
-numpy==2.2.5
+numpy
 Pillow==11.2.1
 protobuf==4.25.3
 Requests==2.32.3
