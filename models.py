@@ -1,5 +1,5 @@
 from datetime import datetime
-from .database import db
+from database import db
 from sqlalchemy import Enum
 
 class Medicine(db.Model):

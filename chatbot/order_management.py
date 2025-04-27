@@ -1,6 +1,6 @@
 from datetime import datetime
-from ..database import db
-from ..models import Cart, Order, OrderItem, Medicine, Payment
+from database import db
+from models import Cart, Order, OrderItem, Medicine, Payment
 
 def add_to_cart_service(user_id, medicine_id, quantity):
     """

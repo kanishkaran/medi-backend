@@ -3,10 +3,10 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from flask_dance.contrib.google import make_google_blueprint
-from .database import db, initialize_database
-from .routes import api_routes
-from .utils.logger import configure_logger
-from .config import Config
+from database import db, initialize_database
+from routes import api_routes
+from utils.logger import configure_logger
+from config import Config
 import os
 
 def create_app():

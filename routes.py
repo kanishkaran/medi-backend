@@ -2,10 +2,10 @@ from flask import Blueprint, jsonify, request
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from .database import db
-from .models import User, Medicine, Cart, Order, OrderItem
-from .chatbot.order_management import view_order_history, complete_order, fetch_cart, initiate_checkout, cancel_order
-from .chatbot.conversation_flow import ConversationFlow
+from database import db
+from models import User, Medicine, Cart, Order, OrderItem
+from chatbot.order_management import view_order_history, complete_order, fetch_cart, initiate_checkout, cancel_order
+from chatbot.conversation_flow import ConversationFlow
 from datetime import datetime, date
 import stripe
 import requests as http_requests

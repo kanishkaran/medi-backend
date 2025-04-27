@@ -1,9 +1,9 @@
 from flask import jsonify
-from ..chatbot.nlu import process_user_input
-from ..services.medicine_service import get_medicine_details, get_medicine_info, get_medicine_availability
-from ..services.order_service import checkout_order
-from ..chatbot.order_management import fetch_cart
-from ..llm_connector import generate_response
+from chatbot.nlu import process_user_input
+from services.medicine_service import get_medicine_details, get_medicine_info, get_medicine_availability
+from services.order_service import checkout_order
+from chatbot.order_management import fetch_cart
+from llm_connector import generate_response
 
 class ConversationFlow:
     """
