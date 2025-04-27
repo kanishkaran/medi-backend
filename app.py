@@ -7,6 +7,7 @@ from .database import db, initialize_database
 from .routes import api_routes
 from .utils.logger import configure_logger
 from .config import Config
+import os
 
 def create_app():
     app = Flask(__name__)
@@ -34,8 +35,8 @@ def create_app():
 
     # Google OAuth Blueprint
     google_bp = make_google_blueprint(
-        client_id="1075856046253-71vvtot48lv4p82cloon1145ovf123ga.apps.googleusercontent.com",
-        client_secret="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",
+        client_id=os.getenv("GOOGLE_CLIENT_ID"),
+        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
         redirect_to="google_login_callback"
     )
     app.register_blueprint(google_bp, url_prefix="/login")

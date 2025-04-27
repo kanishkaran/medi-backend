@@ -17,7 +17,7 @@ from PIL import Image
 import pickle
 
 # Initialize Stripe client
-stripe.api_key = "sk_test_51R8nH7CY9tdh1bLP5EWofkR41f7gG6bFdCVFyMo9Oexy2zxhhWcL4ps7MdqsrvURnVuYQ1td7zK4NspvCzr9eFMI00HTObWS8W"
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 # Blueprint for API routes
 api_routes = Blueprint("api_routes", __name__)
@@ -367,21 +367,17 @@ def verify_payment():
 
     try:
         # Log the payment_intent_id for debugging
-        print(f"Received payment_intent_id: {payment_intent_id}")
 
         # Step 1: Retrieve the Payment Intent from Stripe
         intent = stripe.PaymentIntent.retrieve(payment_intent_id)
-        print(f"Retrieved Payment Intent: {intent}")
 
         # Step 2: Validate the Payment Status
         if intent["status"] == "succeeded":
             # Payment is successful, complete the order
             total_amount = intent["amount"] / 100  # Convert from paise to INR
-            print(f"Payment succeeded. Total amount: {total_amount}")
 
             # Call the complete_order function
             success, order_id, message = complete_order(user_id, total_amount)
-            print(f"Order completion status: {success}, Order ID: {order_id}, Message: {message}")
 
             if success:
                 return jsonify({
@@ -391,7 +387,6 @@ def verify_payment():
             else:
                 return jsonify({"message": message}), 400
         else:
-            print(f"Payment not successful. Status: {intent['status']}")
             return jsonify({"message": f"Payment not successful. Status: {intent['status']}"}), 400
 
     except Exception as e:
