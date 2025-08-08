@@ -14,3 +14,6 @@ Medicines_backup.db
 
 v1.py
 fixCart.py
+
+/venv
+util.py

@@ -5,7 +5,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 
 # Initialize OpenAI LLM for intent recognition and entity extraction
-llm = ChatGroq(model='llama-3.3-70b-versatile', api_key="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")
+llm = ChatGroq(model='llama-3.3-70b-versatile', api_key="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")
 
 output_parser = StrOutputParser()
 
