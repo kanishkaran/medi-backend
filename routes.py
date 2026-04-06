@@ -276,7 +276,6 @@ def add_to_cart():
         )
         db.session.add(order_item)
 
-    # Commit the changes
     db.session.commit()
 
     return jsonify({"message": "Item added to cart"}), 200
@@ -331,24 +330,22 @@ def checkout():
 @api_routes.route("/payment/intent", methods=["POST"])
 @jwt_required()
 def create_payment_intent():
-    user_id = get_jwt_identity()
     data = request.json
-    amount = data.get("amount")  # Amount in INR (e.g., 500 for ₹500)
+    amount = data.get("amount")
 
     if not amount or amount <= 0:
         return jsonify({"message": "Invalid amount"}), 400
 
     try:
-        # Create Stripe Payment Intent with multiple payment methods
         intent = stripe.PaymentIntent.create(
-            amount=int(amount * 100),  # Amount in paise
+            amount=int(amount * 100),
             currency="inr",
-            payment_method_types=["card"],  # Add other methods
+            payment_method_types=["card"],
         )
 
         return jsonify({
             "client_secret": intent["client_secret"],
-            "payment_intent_id": intent["id"],  # Include payment_intent_id
+            "payment_intent_id": intent["id"],
             "amount": amount,
             "currency": "INR"
         }), 200
@@ -366,17 +363,10 @@ def verify_payment():
         return jsonify({"message": "Payment Intent ID is required"}), 400
 
     try:
-        # Log the payment_intent_id for debugging
-
-        # Step 1: Retrieve the Payment Intent from Stripe
         intent = stripe.PaymentIntent.retrieve(payment_intent_id)
 
-        # Step 2: Validate the Payment Status
         if intent["status"] == "succeeded":
-            # Payment is successful, complete the order
-            total_amount = intent["amount"] / 100  # Convert from paise to INR
-
-            # Call the complete_order function
+            total_amount = intent["amount"] / 100
             success, order_id, message = complete_order(user_id, total_amount)
 
             if success:
@@ -390,8 +380,6 @@ def verify_payment():
             return jsonify({"message": f"Payment not successful. Status: {intent['status']}"}), 400
 
     except Exception as e:
-        # Log the error for debugging
-        print(f"Error in /payment/verify: {str(e)}")
         return jsonify({"message": "Failed to verify payment", "error": str(e)}), 500
 
 
