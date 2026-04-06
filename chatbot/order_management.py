@@ -1,40 +1,6 @@
 from datetime import datetime
 from database import db
-from models import Cart, Order, OrderItem, Medicine, Payment
-
-def add_to_cart_service(user_id, medicine_id, quantity):
-    """
-    Adds a specified medicine to the user's cart.
-    :param user_id: The ID of the user
-    :param medicine_id: The ID of the medicine to be added
-    :param quantity: The quantity of the medicine to add
-    :return: A success flag and a message
-    """
-    # Check if the medicine exists in the database
-    medicine = Medicine.query.filter_by(id=medicine_id).first()
-    if not medicine:
-        return False, "Medicine not found."
-
-    # Check if the user already has a cart
-    cart = Cart.query.filter_by(user_id=user_id, status='active').first()
-    if not cart:
-        # Create a new cart if not existing
-        cart = Cart(user_id=user_id, status='active', created_at=datetime())
-        db.session.add(cart)
-        db.session.commit()
-
-    # Check if the medicine is already in the cart
-    cart_item = OrderItem.query.filter_by(cart_id=cart.id, medicine_id=medicine.id).first()
-    if cart_item:
-        # Update quantity if already in cart
-        cart_item.quantity += quantity
-    else:
-        # Add new item to the cart
-        cart_item = OrderItem(cart_id=cart.id, medicine_id=medicine.id, quantity=quantity, price=medicine.price)
-        db.session.add(cart_item)
-
-    db.session.commit()
-    return True, "Medicine successfully added to your cart."
+from models import Cart, Order, OrderItem, Medicine
 
 def fetch_cart(user_id):
     """
@@ -83,60 +49,26 @@ def initiate_checkout(user_id):
     # Proceed to the payment page
     return total_amount, "Proceed to payment."
 
-def process_payment(user_id, payment_method, total_amount):
-    """
-    Processes the payment for the order. In a real implementation, this will interface
-    with a payment gateway to complete the transaction.
-    :param user_id: The ID of the user
-    :param payment_method: The method of payment (e.g., Credit Card, PayPal)
-    :param total_amount: The total amount to be paid
-    :return: A success flag, order ID, and a message
-    """
-    # Placeholder for real payment gateway integration
-    # Example: You would make an API call to your payment processor here (e.g., Stripe, Razorpay, etc.)
-    # If the payment is successful, proceed with creating the order.
-    
-    # For now, let's simulate a successful payment and proceed with order completion
-    # In a real-world scenario, handle the payment gateway response here.
-
-    payment = Payment(user_id=user_id, method=payment_method, amount=total_amount, status='pending', created_at=datetime())
-    db.session.add(payment)
-    db.session.commit()
-
-    # Assuming payment is successful, change status to 'completed'
-    payment.status = 'completed'
-    db.session.commit()
-
-    # Now that the payment is complete, create the order
-    return complete_order(user_id, total_amount)
-
 def complete_order(user_id, total_amount):
-    print(f"Starting order completion for user_id: {user_id}, total_amount: {total_amount}")
     cart = Cart.query.filter_by(user_id=user_id, status='active').first()
     if not cart:
-        print("No active cart found.")
         return False, None, "No active cart found."
 
     cart_items = OrderItem.query.filter_by(cart_id=cart.id).all()
     if not cart_items:
-        print("Cart is empty.")
         return False, None, "Cart is empty."
 
-    # Create a new order
     order = Order(user_id=user_id, created_at=datetime.now(), status='completed', total_amount=total_amount)
     db.session.add(order)
     db.session.commit()
-    print(f"Order created with ID: {order.id}")
 
-    # Move items from cart to order
     for item in cart_items:
         order_item = OrderItem(order_id=order.id, medicine_id=item.medicine_id, quantity=item.quantity, price=item.price)
         db.session.add(order_item)
         db.session.delete(item)
 
-    cart.status = 'inactive'  # Mark the cart as inactive
+    cart.status = 'inactive'
     db.session.commit()
-    print(f"Order #{order.id} completed successfully.")
 
     return True, order.id, f"Order #{order.id} placed successfully with total amount: ₹{total_amount}"
 
@@ -162,7 +94,7 @@ def cancel_order(order_id):
     for item in order_items:
         medicine = Medicine.query.filter_by(id=item.medicine_id).first()
         medicine.stock += item.quantity
-        db.session.commit()
+    db.session.commit()
 
     return True, "Order has been canceled and stock restored."
 

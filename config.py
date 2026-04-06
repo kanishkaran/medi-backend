@@ -4,7 +4,7 @@ from os.path import exists
 class Config:
     # Flask settings
     SECRET_KEY = environ.get("SECRET_KEY", "supersecretkey")
-    DEBUG = environ.get("FLASK_DEBUG", True)
+    DEBUG = environ.get("FLASK_DEBUG", False)
 
     # Database configuration
     SQLALCHEMY_DATABASE_URI = f"sqlite:///{path.join(getcwd(), 'Medicines.db')}"

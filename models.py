@@ -80,7 +80,7 @@ class Payment(db.Model):
     method = db.Column(db.String(50), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     status = db.Column(Enum('pending', 'completed', 'failed', name='payment_status'), default='pending')
-    created_at = db.Column(db.DateTime, default=datetime)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     user = db.relationship('User', backref='user_payments')
 
